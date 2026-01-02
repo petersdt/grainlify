@@ -41,7 +41,6 @@ export function PullRequestsTab({ selectedProjects, onRefresh }: PullRequestsTab
   const [prs, setPrs] = useState<Array<PRFromAPI & { projectName: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showInitialLoading, setShowInitialLoading] = useState(true);
 
   // Fetch PRs from selected projects
   useEffect(() => {
@@ -91,15 +90,6 @@ export function PullRequestsTab({ selectedProjects, onRefresh }: PullRequestsTab
       setIsLoading(false);
     }
   };
-
-  // Initial loading state (1 second delay like payout preferences)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowInitialLoading(false);
-    }, 1000);
-    
-    return () => clearTimeout(timer);
-  }, []);
 
   // Refresh PRs when selectedProjects change
   // Also refresh when page becomes visible (user switches back to tab)
@@ -237,7 +227,7 @@ export function PullRequestsTab({ selectedProjects, onRefresh }: PullRequestsTab
         </div>
 
         {/* Pull Request Rows */}
-        {showInitialLoading || isLoading ? (
+        {isLoading ? (
           <div className="space-y-4">
             {[...Array(8)].map((_, idx) => (
               <SkeletonLoader key={idx} className="h-[100px] w-full" />

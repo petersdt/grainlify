@@ -24,16 +24,6 @@ export function DashboardTab({ selectedProjects, onRefresh }: DashboardTabProps)
   const [issues, setIssues] = useState<any[]>([]);
   const [prs, setPrs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showInitialLoading, setShowInitialLoading] = useState(true);
-
-  // Initial loading state (1 second delay like payout preferences)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowInitialLoading(false);
-    }, 1000);
-    
-    return () => clearTimeout(timer);
-  }, []);
 
   // Fetch data from selected projects
   useEffect(() => {
@@ -325,7 +315,7 @@ export function DashboardTab({ selectedProjects, onRefresh }: DashboardTabProps)
             }`}>Last activity</h2>
 
             {/* Activity List */}
-            {showInitialLoading || isLoading ? (
+            {isLoading ? (
               <div className="space-y-3">
                 {[...Array(5)].map((_, idx) => (
                   <SkeletonLoader key={idx} className="h-[80px] w-full" />
@@ -353,7 +343,7 @@ export function DashboardTab({ selectedProjects, onRefresh }: DashboardTabProps)
             ? 'bg-[#2d2820]/[0.4] border-white/10'
             : 'bg-white/[0.12] border-white/20'
         }`}>
-          {showInitialLoading || isLoading ? (
+          {isLoading ? (
             <SkeletonLoader className="h-[300px] w-full" />
           ) : (
             <ApplicationsChart data={chartData} />
