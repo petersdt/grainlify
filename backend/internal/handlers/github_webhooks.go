@@ -98,17 +98,18 @@ func (h *GitHubWebhooksHandler) Receive() fiber.Handler {
 			"event", event,
 		)
 
+		// Prepare signature preview for logging
+		sigPreview := sig
+		if len(sigPreview) > 20 {
+			sigPreview = sigPreview[:20] + "..."
+		}
+
 		if !verifyGitHubSignature(h.cfg.GitHubWebhookSecret, body, sig) {
 			slog.Warn("GitHub webhook signature verification FAILED",
 				"delivery_id", delivery,
 				"event", event,
 				"has_signature_256", sig != "",
-				"signature_256_preview", func() string {
-					if len(sig) > 20 {
-						return sig[:20] + "..."
-					}
-					return sig
-				}(),
+				"signature_256_preview", sigPreview,
 				"body_size", bodySize,
 			)
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid_signature"})
