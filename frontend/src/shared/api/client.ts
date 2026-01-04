@@ -387,6 +387,7 @@ export const getMyProjects = () =>
     webhook_created_at: string | null;
     webhook_id: number | null;
     webhook_url: string | null;
+    owner_avatar_url?: string;
     created_at: string;
     updated_at: string;
   }>>('/projects/mine', { requiresAuth: true });

@@ -183,6 +183,14 @@ ORDER BY p.created_at DESC
 		}
 		defer rows.Close()
 
+		// Get user's GitHub access token for fetching repo data
+		linkedAccount, err := github.GetLinkedAccount(c.Context(), h.db.Pool, userID, h.cfg.TokenEncKeyB64)
+		var accessToken string
+		if err == nil {
+			accessToken = linkedAccount.AccessToken
+		}
+
+		gh := github.NewClient()
 		var out []fiber.Map
 		for rows.Next() {
 			var id uuid.UUID
@@ -203,13 +211,40 @@ ORDER BY p.created_at DESC
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "projects_list_failed"})
 			}
 
+			// Fetch repo data from GitHub to check if it's private and get owner avatar
+			var ownerAvatarURL *string
+			var isPrivate bool
+			if accessToken != "" {
+				repo, err := gh.GetRepo(c.Context(), accessToken, fullName)
+				if err == nil {
+					isPrivate = repo.Private
+					if !isPrivate {
+						ownerAvatarURL = &repo.Owner.AvatarURL
+					}
+				} else {
+					// If we can't fetch (404/403), assume it's private
+					isPrivate = true
+				}
+			}
+
+			// Skip private repos
+			if isPrivate {
+				// Soft delete private repos from database
+				_, _ = h.db.Pool.Exec(c.Context(), `
+UPDATE projects
+SET deleted_at = now()
+WHERE id = $1
+`, id)
+				continue
+			}
+
 			// Parse tags JSONB
 			var tags []string
 			if len(tagsJSON) > 0 {
 				json.Unmarshal(tagsJSON, &tags)
 			}
 
-			out = append(out, fiber.Map{
+			projectMap := fiber.Map{
 				"id":                 id.String(),
 				"github_full_name":   fullName,
 				"status":             status,
@@ -225,7 +260,14 @@ ORDER BY p.created_at DESC
 				"language":           language,
 				"tags":               tags,
 				"category":           category,
-			})
+			}
+
+			// Add owner avatar if available
+			if ownerAvatarURL != nil {
+				projectMap["owner_avatar_url"] = *ownerAvatarURL
+			}
+
+			out = append(out, projectMap)
 		}
 
 		// Always return an array, even if empty

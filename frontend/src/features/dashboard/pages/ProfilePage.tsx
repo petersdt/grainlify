@@ -3,7 +3,7 @@ import { Search, ChevronDown, Award, Briefcase, GitPullRequest, FolderGit2, Trop
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { useTheme } from '../../../shared/contexts/ThemeContext';
 import { useAuth } from '../../../shared/contexts/AuthContext';
-import { getUserProfile, getMyProjects } from '../../../shared/api/client';
+import { getUserProfile, getMyProjects, getProfileCalendar, getProfileActivity } from '../../../shared/api/client';
 import { SkeletonLoader } from '../../../shared/components/SkeletonLoader';
 import { LanguageIcon } from '../../../shared/components/LanguageIcon';
 
@@ -28,6 +28,7 @@ interface Project {
   status: string;
   ecosystem_name?: string;
   language?: string;
+  owner_avatar_url?: string;
   stars_count?: number;
   forks_count?: number;
   contributors_count?: number;
@@ -38,27 +39,25 @@ export function ProfilePage() {
   const { user, userRole } = useAuth();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [contributionCalendar, setContributionCalendar] = useState<Array<{ date: string; count: number; level: number }>>([]);
+  const [contributionActivity, setContributionActivity] = useState<Array<{
+    type: 'pull_request' | 'issue';
+    id: string;
+    number: number;
+    title: string;
+    url: string;
+    date: string;
+    month_year: string;
+    project_name: string;
+    project_id: string;
+  }>>([]);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [isLoadingCalendar, setIsLoadingCalendar] = useState(true);
+  const [isLoadingActivity, setIsLoadingActivity] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedMonths, setExpandedMonths] = useState<{ [key: string]: boolean }>({
-    'November 2025': true,
-    'October 2025': false,
-    'September 2025': false,
-    'August 2025': false,
-    'July 2025': false,
-    'June 2025': false,
-    'May 2025': false,
-    'April 2025': false,
-    'March 2025': false,
-  });
-
-  // Sample contribution data for heatmap (365 days)
-  const contributionData = Array.from({ length: 365 }, (_, i) => {
-    const random = Math.random();
-    return random > 0.7 ? 3 : random > 0.5 ? 2 : random > 0.3 ? 1 : 0;
-  });
+  const [expandedMonths, setExpandedMonths] = useState<{ [key: string]: boolean }>({});
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -95,6 +94,7 @@ export function ProfilePage() {
             status: p.status,
             ecosystem_name: p.ecosystem_name,
             language: p.language,
+            owner_avatar_url: p.owner_avatar_url,
             stars_count: 0, // Will be fetched from GitHub if needed
             forks_count: 0,
             contributors_count: 0,
@@ -107,6 +107,50 @@ export function ProfilePage() {
       }
     };
     fetchProjects();
+  }, []);
+
+  // Fetch contribution calendar
+  useEffect(() => {
+    const fetchCalendar = async () => {
+      setIsLoadingCalendar(true);
+      try {
+        const data = await getProfileCalendar();
+        setContributionCalendar(data.calendar || []);
+        setIsLoadingCalendar(false);
+      } catch (error) {
+        console.error('Failed to fetch calendar:', error);
+        // Keep loading state true to show skeleton forever when backend is down
+      }
+    };
+    fetchCalendar();
+  }, []);
+
+  // Fetch contribution activity
+  useEffect(() => {
+    const fetchActivity = async () => {
+      setIsLoadingActivity(true);
+      try {
+        const data = await getProfileActivity(100, 0);
+        setContributionActivity(data.activities || []);
+        // Initialize expanded months based on activity data
+        const monthsSet = new Set<string>();
+        data.activities?.forEach((activity: any) => {
+          if (activity.month_year) {
+            monthsSet.add(activity.month_year);
+          }
+        });
+        const monthsObj: { [key: string]: boolean } = {};
+        Array.from(monthsSet).forEach((month, idx) => {
+          monthsObj[month] = idx === 0; // Expand first month by default
+        });
+        setExpandedMonths(monthsObj);
+        setIsLoadingActivity(false);
+      } catch (error) {
+        console.error('Failed to fetch activity:', error);
+        // Keep loading state true to show skeleton forever when backend is down
+      }
+    };
+    fetchActivity();
   }, []);
 
   const toggleMonth = (month: string) => {
@@ -167,110 +211,28 @@ export function ProfilePage() {
     };
   }) || [];
 
-  const contributionsByMonth: { [key: string]: any[] } = {
-    'December 2025': [
-      {
-        id: 1,
-        type: 'issue',
-        number: 1234,
-        badgeColor: '#c9983a',
-        title: 'Add support for new React hooks',
-        project: 'React Ecosystem',
-        date: '27 Nov.',
-      },
-      {
-        id: 2,
-        type: 'pr',
-        number: 5678,
-        badgeColor: '#d4af37',
-        title: 'Fix memory leak in component lifecycle',
-        project: 'NestJS Framework',
-        date: '07 Dec.',
-      },
-      {
-        id: 3,
-        type: 'review',
-        number: 3421,
-        badgeColor: '#b8873a',
-        title: 'Review: Improve type safety in API client',
-        project: 'Vue.js',
-        date: '17 Dec.',
-      },
-    ],
-    'November 2025': [
-      {
-        id: 4,
-        type: 'issue',
-        number: 2341,
-        badgeColor: '#c9983a',
-        title: 'Implement caching layer',
-        project: 'React Ecosystem',
-        date: '15 Nov.',
-      },
-      {
-        id: 5,
-        type: 'pr',
-        number: 8923,
-        badgeColor: '#d4af37',
-        title: 'Add unit tests for API endpoints',
-        project: 'NestJS Framework',
-        date: '22 Nov.',
-      },
-    ],
-    'October 2025': [
-      {
-        id: 6,
-        type: 'issue',
-        number: 4512,
-        badgeColor: '#b8873a',
-        title: 'Optimize database queries',
-        project: 'Vue.js',
-        date: '10 Oct.',
-      },
-    ],
-    'September 2025': [
-      {
-        id: 7,
-        type: 'pr',
-        number: 7821,
-        badgeColor: '#c9983a',
-        title: 'Add error boundary component',
-        project: 'React Ecosystem',
-        date: '05 Sep.',
-      },
-    ],
-    'August 2025': [
-      {
-        id: 8,
-        type: 'issue',
-        number: 6234,
-        badgeColor: '#d4af37',
-        title: 'Refactor state management',
-        project: 'NestJS Framework',
-        date: '18 Aug.',
-      },
-    ],
-  };
+  // Group contribution activity by month
+  const contributionsByMonth: { [key: string]: any[] } = {};
+  contributionActivity.forEach((activity) => {
+    const month = activity.month_year || 'Unknown';
+    if (!contributionsByMonth[month]) {
+      contributionsByMonth[month] = [];
+    }
+    contributionsByMonth[month].push({
+      id: activity.id,
+      type: activity.type,
+      number: activity.number,
+      badgeColor: activity.type === 'issue' ? '#c9983a' : '#d4af37',
+      title: activity.title,
+      project: activity.project_name,
+      date: new Date(activity.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+      url: activity.url,
+    });
+  });
 
-
-  // Rewards data for donut chart
-  const rewardsData = [
-    { name: 'Madara', value: 30, color: '#FDB462', amount: 12500 },
-    { name: 'Kakarot', value: 25, color: '#B39DDB', amount: 9800 },
-    { name: 'Starkly', value: 20, color: '#81C784', amount: 7200 },
-    { name: 'Starknet', value: 15, color: '#64B5F6', amount: 5400 },
-    { name: 'Others', value: 10, color: '#FFB74D', amount: 3600 },
-  ];
-
-  const totalRewards = rewardsData.reduce((sum, item) => sum + item.amount, 0);
-
-  // Activity heatmap data for last 4 weeks
-  const activityWeeks = [
-    { label: 'Week 29 2023', days: [0, 2, 1, 0, 3, 2, 1] },
-    { label: 'Week 45 2023', days: [1, 0, 2, 3, 1, 0, 2] },
-    { label: 'Week 46 2023', days: [2, 1, 0, 2, 3, 1, 0] },
-    { label: '< Current week', days: [0, 3, 2, 1, 0, 2, 1] },
-  ];
+  // Empty rewards data (no rewards yet)
+  const rewardsData: Array<{ name: string; value: number; color: string; amount: number }> = [];
+  const totalRewards = 0;
 
   return (
     <div className="space-y-6">
@@ -563,8 +525,14 @@ export function ProfilePage() {
                 >
                   {/* Project Header */}
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-[12px] bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-md text-[22px] group-hover/project:scale-110 group-hover/project:rotate-6 transition-all duration-300">
-                      {project.language ? (
+                    <div className="w-12 h-12 rounded-[12px] bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-md overflow-hidden group-hover/project:scale-110 group-hover/project:rotate-6 transition-all duration-300">
+                      {project.owner_avatar_url ? (
+                        <img
+                          src={project.owner_avatar_url}
+                          alt={projectName}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : project.language ? (
                         <LanguageIcon language={project.language} className="w-8 h-8" />
                       ) : (
                         <FolderGit2 className="w-6 h-6 text-white" />
@@ -792,100 +760,108 @@ export function ProfilePage() {
           }`}>Rewards Distribution</h2>
         </div>
 
-        <div className="relative flex items-center gap-10">
-          {/* Left: Donut Chart with Center Total */}
-          <div className="relative group/chart">
-            {/* Pulsing Glow Behind Chart */}
-            <div className="absolute inset-0 bg-gradient-to-br from-[#c9983a]/20 to-[#d4af37]/15 rounded-full blur-2xl group-hover/chart:scale-110 transition-transform duration-500" />
-            
-            <div className="w-[240px] h-[240px] relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={rewardsData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={75}
-                    outerRadius={105}
-                    paddingAngle={3}
-                    dataKey="value"
-                    animationBegin={0}
-                    animationDuration={800}
-                    animationEasing="ease-out"
-                  >
-                    {rewardsData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={entry.color}
-                        className="hover:opacity-80 transition-opacity cursor-pointer"
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    content={({ active, payload }) => {
-                      if (active && payload && payload[0]) {
-                        const data = payload[0].payload;
-                        return (
-                          <div className="backdrop-blur-[40px] bg-[#e8dfd0]/95 rounded-[14px] border border-white/25 shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-6 py-4">
-                            <div className="text-[24px] font-black text-[#2d2820] drop-shadow-sm">
-                              ${data.amount.toLocaleString()}
-                            </div>
-                            <div className="text-[11px] font-bold text-[#7a6b5a] uppercase tracking-widest mt-1">
-                              {data.name}
-                            </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                    offset={50}
-                    position={{ y: -80 }}
-                    wrapperStyle={{ zIndex: 1000 }}
-                    cursor={false}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+        {rewardsData.length === 0 ? (
+          <div className={`text-center py-12 ${theme === 'dark' ? 'text-[#d4d4d4]' : 'text-[#7a6b5a]'}`}>
+            <Trophy className="w-16 h-16 mx-auto mb-4 opacity-50" />
+            <p className="text-[16px] font-medium">No rewards yet</p>
+            <p className="text-[14px] mt-2">Start contributing to earn rewards!</p>
+          </div>
+        ) : (
+          <div className="relative flex items-center gap-10">
+            {/* Left: Donut Chart with Center Total */}
+            <div className="relative group/chart">
+              {/* Pulsing Glow Behind Chart */}
+              <div className="absolute inset-0 bg-gradient-to-br from-[#c9983a]/20 to-[#d4af37]/15 rounded-full blur-2xl group-hover/chart:scale-110 transition-transform duration-500" />
               
-              {/* Center Total with Animation */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <div className="text-[13px] font-bold text-[#7a6b5a] uppercase tracking-wider mb-1 animate-pulse">Total</div>
-                <div className="text-[36px] font-black bg-gradient-to-b from-[#2d2820] to-[#c9983a] bg-clip-text text-transparent leading-none group-hover/chart:scale-110 transition-transform duration-300">
-                  ${(totalRewards / 1000).toFixed(1)}K
+              <div className="w-[240px] h-[240px] relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={rewardsData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={75}
+                      outerRadius={105}
+                      paddingAngle={3}
+                      dataKey="value"
+                      animationBegin={0}
+                      animationDuration={800}
+                      animationEasing="ease-out"
+                    >
+                      {rewardsData.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry.color}
+                          className="hover:opacity-80 transition-opacity cursor-pointer"
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload[0]) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="backdrop-blur-[40px] bg-[#e8dfd0]/95 rounded-[14px] border border-white/25 shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-6 py-4">
+                              <div className="text-[24px] font-black text-[#2d2820] drop-shadow-sm">
+                                ${data.amount.toLocaleString()}
+                              </div>
+                              <div className="text-[11px] font-bold text-[#7a6b5a] uppercase tracking-widest mt-1">
+                                {data.name}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                      offset={50}
+                      position={{ y: -80 }}
+                      wrapperStyle={{ zIndex: 1000 }}
+                      cursor={false}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                
+                {/* Center Total with Animation */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <div className="text-[13px] font-bold text-[#7a6b5a] uppercase tracking-wider mb-1 animate-pulse">Total</div>
+                  <div className="text-[36px] font-black bg-gradient-to-b from-[#2d2820] to-[#c9983a] bg-clip-text text-transparent leading-none group-hover/chart:scale-110 transition-transform duration-300">
+                    ${(totalRewards / 1000).toFixed(1)}K
+                  </div>
+                  <div className="text-[11px] font-semibold text-[#7a6b5a] mt-1">USD Earned</div>
                 </div>
-                <div className="text-[11px] font-semibold text-[#7a6b5a] mt-1">USD Earned</div>
               </div>
             </div>
-          </div>
 
-          {/* Right: Legend with Amounts */}
-          <div className="flex-1 grid grid-cols-2 gap-4">
-            {rewardsData.map((item, idx) => (
-              <div
-                key={item.name}
-                className="backdrop-blur-[20px] bg-white/[0.15] rounded-[14px] border border-white/25 p-4 hover:bg-white/[0.25] hover:scale-105 hover:border-white/40 hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-all duration-300 cursor-pointer group/card"
-                style={{
-                  animationDelay: `${idx * 100}ms`,
-                }}
-              >
-                <div className="flex items-start gap-3">
-                  <div
-                    className="w-4 h-4 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.2)] flex-shrink-0 mt-0.5 group-hover/card:scale-150 group-hover/card:shadow-[0_4px_16px_rgba(0,0,0,0.3)] transition-all duration-300"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <div className="flex-1">
-                    <div className="text-[13px] font-semibold text-[#2d2820] mb-1 group-hover/card:text-[#c9983a] transition-colors">{item.name}</div>
-                    <div className="flex items-baseline gap-2">
-                      <div className="text-[20px] font-black text-[#2d2820] group-hover/card:scale-105 transition-transform origin-left">
-                        ${item.amount.toLocaleString()}
+            {/* Right: Legend with Amounts */}
+            <div className="flex-1 grid grid-cols-2 gap-4">
+              {rewardsData.map((item, idx) => (
+                <div
+                  key={item.name}
+                  className="backdrop-blur-[20px] bg-white/[0.15] rounded-[14px] border border-white/25 p-4 hover:bg-white/[0.25] hover:scale-105 hover:border-white/40 hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-all duration-300 cursor-pointer group/card"
+                  style={{
+                    animationDelay: `${idx * 100}ms`,
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-4 h-4 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.2)] flex-shrink-0 mt-0.5 group-hover/card:scale-150 group-hover/card:shadow-[0_4px_16px_rgba(0,0,0,0.3)] transition-all duration-300"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <div className="flex-1">
+                      <div className="text-[13px] font-semibold text-[#2d2820] mb-1 group-hover/card:text-[#c9983a] transition-colors">{item.name}</div>
+                      <div className="flex items-baseline gap-2">
+                        <div className="text-[20px] font-black text-[#2d2820] group-hover/card:scale-105 transition-transform origin-left">
+                          ${item.amount.toLocaleString()}
+                        </div>
+                        <div className="text-[11px] font-bold text-[#c9983a] group-hover/card:scale-110 transition-transform">{item.value}%</div>
                       </div>
-                      <div className="text-[11px] font-bold text-[#c9983a] group-hover/card:scale-110 transition-transform">{item.value}%</div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Contribution Heatmap */}
@@ -894,12 +870,20 @@ export function ProfilePage() {
           <h2 className={`text-[18px] font-bold transition-colors ${
             theme === 'dark' ? 'text-[#f5f5f5]' : 'text-[#2d2820]'
           }`}>
-            <span className={`text-[32px] font-black transition-colors ${
-              theme === 'dark' ? 'text-[#f5f5f5]' : 'text-[#2d2820]'
-            }`}>470</span>
-            <span className={`text-[16px] ml-2 transition-colors ${
-              theme === 'dark' ? 'text-[#d4d4d4]' : 'text-[#7a6b5a]'
-            }`}>contributions last year</span>
+            {isLoadingCalendar ? (
+              <SkeletonLoader variant="text" width="200px" height="32px" />
+            ) : (
+              <>
+                <span className={`text-[32px] font-black transition-colors ${
+                  theme === 'dark' ? 'text-[#f5f5f5]' : 'text-[#2d2820]'
+                }`}>
+                  {contributionCalendar.reduce((sum, day) => sum + day.count, 0)}
+                </span>
+                <span className={`text-[16px] ml-2 transition-colors ${
+                  theme === 'dark' ? 'text-[#d4d4d4]' : 'text-[#7a6b5a]'
+                }`}>contributions last year</span>
+              </>
+            )}
           </h2>
         </div>
 
@@ -941,44 +925,64 @@ export function ProfilePage() {
             </div>
 
             {/* Contribution squares - 52 weeks */}
-            <div className="flex-1 flex justify-between gap-[3px]">
-              {Array.from({ length: 52 }).map((_, weekIdx) => (
-                <div key={weekIdx} className="flex flex-col gap-[3px] flex-1 max-w-[20px]">
-                  {Array.from({ length: 7 }).map((_, dayIdx) => {
-                    const dataIdx = weekIdx * 7 + dayIdx;
-                    const level = contributionData[dataIdx] || 0;
-                    const hasSparkle = level === 3 && Math.random() > 0.6;
-                    
-                    let bgColor = 'bg-white/40 border-2 border-white/60'; // Empty - much more visible white
-                    let shadowClass = 'shadow-[0_2px_8px_rgba(255,255,255,0.3)]';
-                    if (level === 1) {
-                      bgColor = 'bg-[#c9983a]/50 border-2 border-[#c9983a]/70';
-                      shadowClass = 'shadow-[0_2px_10px_rgba(201,152,58,0.3)]';
-                    }
-                    if (level === 2) {
-                      bgColor = 'bg-[#c9983a]/75 border-2 border-[#c9983a]/90';
-                      shadowClass = 'shadow-[0_3px_14px_rgba(201,152,58,0.45)]';
-                    }
-                    if (level === 3) {
-                      bgColor = 'bg-gradient-to-br from-[#c9983a] to-[#b8873a] border-2 border-[#ffd700]';
-                      shadowClass = 'shadow-[0_4px_20px_rgba(201,152,58,0.6),0_0_15px_rgba(255,215,0,0.4)]';
-                    }
+            {isLoadingCalendar ? (
+              <div className="flex-1 flex justify-between gap-[3px]">
+                {Array.from({ length: 52 }).map((_, weekIdx) => (
+                  <div key={weekIdx} className="flex flex-col gap-[3px] flex-1 max-w-[20px]">
+                    {Array.from({ length: 7 }).map((_, dayIdx) => (
+                      <SkeletonLoader key={dayIdx} variant="default" width="100%" height="100%" className="aspect-square rounded-[4px]" />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex-1 flex justify-between gap-[3px]">
+                {Array.from({ length: 52 }).map((_, weekIdx) => (
+                  <div key={weekIdx} className="flex flex-col gap-[3px] flex-1 max-w-[20px]">
+                    {Array.from({ length: 7 }).map((_, dayIdx) => {
+                      // Calculate the date for this square (365 days ago to today)
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const daysAgo = 364 - (weekIdx * 7 + dayIdx);
+                      const targetDate = new Date(today);
+                      targetDate.setDate(targetDate.getDate() - daysAgo);
+                      const dateStr = targetDate.toISOString().split('T')[0];
+                      
+                      // Find matching calendar entry
+                      const calendarEntry = contributionCalendar.find(entry => entry.date === dateStr);
+                      const count = calendarEntry?.count || 0;
+                      const level = calendarEntry?.level || 0;
+                      const hasSparkle = level >= 3 && count > 0;
+                      
+                      let bgColor = 'bg-white/40 border-2 border-white/60'; // Empty
+                      let shadowClass = 'shadow-[0_2px_8px_rgba(255,255,255,0.3)]';
+                      if (level === 1) {
+                        bgColor = 'bg-[#c9983a]/50 border-2 border-[#c9983a]/70';
+                        shadowClass = 'shadow-[0_2px_10px_rgba(201,152,58,0.3)]';
+                      } else if (level === 2) {
+                        bgColor = 'bg-[#c9983a]/75 border-2 border-[#c9983a]/90';
+                        shadowClass = 'shadow-[0_3px_14px_rgba(201,152,58,0.45)]';
+                      } else if (level >= 3) {
+                        bgColor = 'bg-gradient-to-br from-[#c9983a] to-[#b8873a] border-2 border-[#ffd700]';
+                        shadowClass = 'shadow-[0_4px_20px_rgba(201,152,58,0.6),0_0_15px_rgba(255,215,0,0.4)]';
+                      }
 
-                    return (
-                      <div
-                        key={dayIdx}
-                        className={`w-full aspect-square rounded-[4px] ${bgColor} ${shadowClass} hover:scale-125 hover:ring-2 hover:ring-[#c9983a] hover:shadow-[0_4px_24px_rgba(201,152,58,0.8)] hover:z-10 transition-all duration-200 cursor-pointer relative group`}
-                        title={`${level} contributions`}
-                      >
-                        {hasSparkle && (
-                          <Sparkles className="w-[10px] h-[10px] text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_0_6px_rgba(255,255,255,1)] animate-pulse" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+                      return (
+                        <div
+                          key={dayIdx}
+                          className={`w-full aspect-square rounded-[4px] ${bgColor} ${shadowClass} hover:scale-125 hover:ring-2 hover:ring-[#c9983a] hover:shadow-[0_4px_24px_rgba(201,152,58,0.8)] hover:z-10 transition-all duration-200 cursor-pointer relative group`}
+                          title={count > 0 ? `${count} contribution${count !== 1 ? 's' : ''} on ${dateStr}` : 'No contributions'}
+                        >
+                          {hasSparkle && (
+                            <Sparkles className="w-[10px] h-[10px] text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_0_6px_rgba(255,255,255,1)] animate-pulse" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Legend */}
@@ -1020,9 +1024,32 @@ export function ProfilePage() {
         </div>
 
         {/* Activity List */}
-        <div className="space-y-2">
-          {Object.entries(contributionsByMonth).map(([month, items]) => (
-            <div key={month} className="backdrop-blur-[20px] bg-white/[0.08] rounded-[12px] border border-white/20 overflow-hidden">
+        {isLoadingActivity ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, idx) => (
+              <div key={idx} className="backdrop-blur-[20px] bg-white/[0.08] rounded-[12px] border border-white/20 p-5">
+                <SkeletonLoader variant="text" width="150px" height="20px" className="mb-3" />
+                <div className="space-y-2">
+                  {Array.from({ length: 2 }).map((_, itemIdx) => (
+                    <div key={itemIdx} className="flex items-center gap-4">
+                      <SkeletonLoader variant="circle" width="32px" height="32px" />
+                      <SkeletonLoader variant="text" width="60%" height="16px" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : Object.keys(contributionsByMonth).length === 0 ? (
+          <div className={`text-center py-12 ${theme === 'dark' ? 'text-[#d4d4d4]' : 'text-[#7a6b5a]'}`}>
+            <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50" />
+            <p className="text-[16px] font-medium">No contributions yet</p>
+            <p className="text-[14px] mt-2">Start contributing to verified projects to see your activity here!</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {Object.entries(contributionsByMonth).map(([month, items]) => (
+              <div key={month} className="backdrop-blur-[20px] bg-white/[0.08] rounded-[12px] border border-white/20 overflow-hidden">
               {/* Month Header with Calendar Icon */}
               <button
                 onClick={() => toggleMonth(month)}
