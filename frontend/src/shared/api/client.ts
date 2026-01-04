@@ -197,6 +197,28 @@ export const getPublicProjects = (params?: {
   }>(endpoint);
 };
 
+// Get recommended projects (top by contributors count)
+export const getRecommendedProjects = (limit: number = 8) =>
+  apiRequest<{
+    projects: Array<{
+      id: string;
+      github_full_name: string;
+      language: string | null;
+      tags: string[];
+      category: string | null;
+      stars_count: number;
+      forks_count: number;
+      contributors_count: number;
+      open_issues_count: number;
+      open_prs_count: number;
+      ecosystem_name: string | null;
+      ecosystem_slug: string | null;
+      description?: string;
+      created_at: string;
+      updated_at: string;
+    }>;
+  }>(`/projects/recommended?limit=${limit}`);
+
 export const getPublicProject = (projectId: string) =>
   apiRequest<{
     id: string;

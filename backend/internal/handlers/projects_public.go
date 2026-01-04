@@ -557,6 +557,150 @@ WHERE %s
 	}
 }
 
+// Recommended returns top projects ordered by contributors count, enriched with GitHub data.
+// Query parameters:
+//   - limit: max results (default 8, max 20)
+func (h *ProjectsPublicHandler) Recommended() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if h.db == nil || h.db.Pool == nil {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "db_not_configured"})
+		}
+
+		limit := 8
+		if l := c.QueryInt("limit", 8); l > 0 && l <= 20 {
+			limit = l
+		}
+
+		// Query top projects by contributors count
+		query := `
+SELECT 
+  p.id,
+  p.github_full_name,
+  p.language,
+  p.tags,
+  p.category,
+  p.stars_count,
+  p.forks_count,
+  (
+    SELECT COUNT(*)
+    FROM github_issues gi
+    WHERE gi.project_id = p.id AND gi.state = 'open'
+  ) AS open_issues_count,
+  (
+    SELECT COUNT(*)
+    FROM github_pull_requests gpr
+    WHERE gpr.project_id = p.id AND gpr.state = 'open'
+  ) AS open_prs_count,
+  (
+    SELECT COUNT(DISTINCT a.author_login)
+    FROM (
+      SELECT author_login FROM github_issues WHERE project_id = p.id AND author_login IS NOT NULL AND author_login != ''
+      UNION
+      SELECT author_login FROM github_pull_requests WHERE project_id = p.id AND author_login IS NOT NULL AND author_login != ''
+    ) a
+  ) AS contributors_count,
+  p.created_at,
+  p.updated_at,
+  e.name AS ecosystem_name,
+  e.slug AS ecosystem_slug
+FROM projects p
+LEFT JOIN ecosystems e ON p.ecosystem_id = e.id
+WHERE p.status = 'verified' AND p.deleted_at IS NULL
+ORDER BY contributors_count DESC, p.stars_count DESC, p.created_at DESC
+LIMIT $1
+`
+		rows, err := h.db.Pool.Query(c.Context(), query, limit)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "recommended_projects_failed"})
+		}
+		defer rows.Close()
+
+		// Enrich with GitHub data (best effort)
+		ctx, cancel := context.WithTimeout(c.Context(), 8*time.Second)
+		defer cancel()
+		gh := github.NewClient()
+
+		var out []fiber.Map
+		for rows.Next() {
+			var id uuid.UUID
+			var fullName string
+			var language, category *string
+			var tagsJSON []byte
+			var starsCount, forksCount *int
+			var openIssuesCount, openPRsCount, contributorsCount int
+			var createdAt, updatedAt time.Time
+			var ecosystemName, ecosystemSlug *string
+
+			if err := rows.Scan(&id, &fullName, &language, &tagsJSON, &category, &starsCount, &forksCount, &openIssuesCount, &openPRsCount, &contributorsCount, &createdAt, &updatedAt, &ecosystemName, &ecosystemSlug); err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "recommended_projects_scan_failed"})
+			}
+
+			// Parse tags JSONB
+			var tags []string
+			if len(tagsJSON) > 0 {
+				_ = json.Unmarshal(tagsJSON, &tags)
+			}
+
+			// Default to 0 if nil
+			stars := 0
+			if starsCount != nil {
+				stars = *starsCount
+			}
+			forks := 0
+			if forksCount != nil {
+				forks = *forksCount
+			}
+
+			// Fetch fresh data from GitHub if stars/forks are 0 or nil
+			if stars == 0 || forks == 0 {
+				if repo, err := gh.GetRepo(ctx, "", fullName); err == nil {
+					if repo.StargazersCount > 0 {
+						stars = repo.StargazersCount
+					}
+					if repo.ForksCount > 0 {
+						forks = repo.ForksCount
+					}
+					// Best-effort persist (non-blocking)
+					go func(projectID uuid.UUID, st, fk int) {
+						_, _ = h.db.Pool.Exec(context.Background(), `
+UPDATE projects SET stars_count=$2, forks_count=$3, updated_at=now()
+WHERE id=$1
+`, projectID, st, fk)
+					}(id, stars, forks)
+				}
+			}
+
+			// Get repo description from GitHub
+			var description string
+			if repo, err := gh.GetRepo(ctx, "", fullName); err == nil {
+				description = repo.Description
+			}
+
+			out = append(out, fiber.Map{
+				"id":                 id.String(),
+				"github_full_name":   fullName,
+				"language":           language,
+				"tags":               tags,
+				"category":           category,
+				"stars_count":        stars,
+				"forks_count":        forks,
+				"contributors_count": contributorsCount,
+				"open_issues_count":  openIssuesCount,
+				"open_prs_count":     openPRsCount,
+				"ecosystem_name":     ecosystemName,
+				"ecosystem_slug":     ecosystemSlug,
+				"description":       description,
+				"created_at":         createdAt,
+				"updated_at":         updatedAt,
+			})
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"projects": out,
+		})
+	}
+}
+
 // FilterOptions returns available filter values (languages, categories, tags) from verified projects.
 func (h *ProjectsPublicHandler) FilterOptions() fiber.Handler {
 	return func(c *fiber.Ctx) error {

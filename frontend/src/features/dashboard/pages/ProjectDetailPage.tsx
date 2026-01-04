@@ -5,6 +5,7 @@ import { useTheme } from '../../../shared/contexts/ThemeContext';
 import { getPublicProject, getPublicProjectIssues, getPublicProjectPRs } from '../../../shared/api/client';
 import { SkeletonLoader } from '../../../shared/components/SkeletonLoader';
 import ReactMarkdown from 'react-markdown';
+import { LanguageIcon } from '../../../shared/components/LanguageIcon';
 
 interface ProjectDetailPageProps {
   onBack?: () => void;
@@ -275,9 +276,12 @@ export function ProjectDetailPage({ onBack, onIssueClick, projectId: propProject
               languages.map((lang, idx) => (
                 <div key={idx}>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className={`text-[13px] font-semibold transition-colors ${
-                      theme === 'dark' ? 'text-[#f5f5f5]' : 'text-[#2d2820]'
-                    }`}>{lang.name}</span>
+                    <div className="flex items-center gap-2">
+                      <LanguageIcon language={lang.name} className="w-4 h-4 flex-shrink-0" />
+                      <span className={`text-[13px] font-semibold transition-colors ${
+                        theme === 'dark' ? 'text-[#f5f5f5]' : 'text-[#2d2820]'
+                      }`}>{lang.name}</span>
+                    </div>
                     <span className="text-[12px] font-bold text-[#c9983a]">{lang.percentage}%</span>
                   </div>
                   <div className="h-2 rounded-full backdrop-blur-[15px] bg-white/[0.08] border border-white/15 overflow-hidden">
@@ -540,33 +544,91 @@ export function ProjectDetailPage({ onBack, onIssueClick, projectId: propProject
               <SkeletonLoader className="h-4 w-3/4" />
             </div>
           ) : project?.readme ? (
-            <div className={`prose prose-sm max-w-none ${
-              theme === 'dark' 
-                ? 'prose-invert prose-headings:text-[#f5f5f5] prose-p:text-[#d4d4d4] prose-a:text-[#c9983a] prose-strong:text-[#f5f5f5] prose-code:text-[#c9983a] prose-code:bg-white/[0.1] prose-pre:bg-white/[0.1]' 
-                : 'prose-headings:text-[#2d2820] prose-p:text-[#4a3f2f] prose-a:text-[#c9983a] prose-strong:text-[#2d2820] prose-code:text-[#c9983a] prose-code:bg-white/[0.15] prose-pre:bg-white/[0.15]'
-            }`}>
+            <div className="prose prose-sm max-w-none">
               <ReactMarkdown
                 components={{
-                  h1: ({node, ...props}: any) => <h1 className="text-[24px] font-bold mb-4 mt-6 first:mt-0" {...props} />,
-                  h2: ({node, ...props}: any) => <h2 className="text-[20px] font-bold mb-3 mt-5" {...props} />,
-                  h3: ({node, ...props}: any) => <h3 className="text-[18px] font-semibold mb-2 mt-4" {...props} />,
-                  p: ({node, ...props}: any) => <p className="mb-4 leading-relaxed" {...props} />,
-                  a: ({node, ...props}: any) => <a className="text-[#c9983a] hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
+                  h1: ({node, ...props}: any) => (
+                    <h1 className={`text-[24px] font-bold mb-4 mt-6 first:mt-0 transition-colors ${
+                      theme === 'dark' ? 'text-[#f5f5f5]' : 'text-[#2d2820]'
+                    }`} {...props} />
+                  ),
+                  h2: ({node, ...props}: any) => (
+                    <h2 className={`text-[20px] font-bold mb-3 mt-5 transition-colors ${
+                      theme === 'dark' ? 'text-[#f5f5f5]' : 'text-[#2d2820]'
+                    }`} {...props} />
+                  ),
+                  h3: ({node, ...props}: any) => (
+                    <h3 className={`text-[18px] font-semibold mb-2 mt-4 transition-colors ${
+                      theme === 'dark' ? 'text-[#f5f5f5]' : 'text-[#2d2820]'
+                    }`} {...props} />
+                  ),
+                  p: ({node, ...props}: any) => (
+                    <p className={`mb-4 leading-relaxed transition-colors ${
+                      theme === 'dark' ? 'text-[#d4d4d4]' : 'text-[#4a3f2f]'
+                    }`} {...props} />
+                  ),
+                  a: ({node, ...props}: any) => (
+                    <a 
+                      className={`font-semibold hover:underline transition-colors ${
+                        theme === 'dark' 
+                          ? 'text-[#f5c563] hover:text-[#ffd700]' 
+                          : 'text-[#b8872f] hover:text-[#8b6f3a]'
+                      }`} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      {...props} 
+                    />
+                  ),
                   code: ({node, inline, ...props}: any) => 
                     inline ? (
-                      <code className="px-1.5 py-0.5 rounded text-[13px] font-mono bg-white/[0.15] text-[#c9983a]" {...props} />
+                      <code className={`px-1.5 py-0.5 rounded text-[13px] font-mono transition-colors ${
+                        theme === 'dark'
+                          ? 'bg-white/[0.15] text-[#f5c563] border border-[#c9983a]/30'
+                          : 'bg-white/[0.25] text-[#8b6f3a] border border-[#c9983a]/40'
+                      }`} {...props} />
                     ) : (
-                      <code className="block p-4 rounded-[12px] text-[13px] font-mono bg-white/[0.1] overflow-x-auto" {...props} />
+                      <code className={`block p-4 rounded-[12px] text-[13px] font-mono overflow-x-auto transition-colors ${
+                        theme === 'dark'
+                          ? 'bg-white/[0.12] text-[#e8dfd0] border border-white/20'
+                          : 'bg-white/[0.20] text-[#2d2820] border border-white/30'
+                      }`} {...props} />
                     ),
-                  pre: ({node, ...props}: any) => <pre className="mb-4 overflow-x-auto" {...props} />,
-                  ul: ({node, ...props}: any) => <ul className="list-disc list-inside mb-4 space-y-2" {...props} />,
-                  ol: ({node, ...props}: any) => <ol className="list-decimal list-inside mb-4 space-y-2" {...props} />,
-                  li: ({node, ...props}: any) => <li className="ml-4" {...props} />,
+                  pre: ({node, ...props}: any) => (
+                    <pre className={`mb-4 overflow-x-auto rounded-[12px] p-4 transition-colors ${
+                      theme === 'dark'
+                        ? 'bg-white/[0.12] border border-white/20'
+                        : 'bg-white/[0.20] border border-white/30'
+                    }`} {...props} />
+                  ),
+                  ul: ({node, ...props}: any) => (
+                    <ul className={`list-disc list-inside mb-4 space-y-2 transition-colors ${
+                      theme === 'dark' ? 'text-[#d4d4d4]' : 'text-[#4a3f2f]'
+                    }`} {...props} />
+                  ),
+                  ol: ({node, ...props}: any) => (
+                    <ol className={`list-decimal list-inside mb-4 space-y-2 transition-colors ${
+                      theme === 'dark' ? 'text-[#d4d4d4]' : 'text-[#4a3f2f]'
+                    }`} {...props} />
+                  ),
+                  li: ({node, ...props}: any) => (
+                    <li className={`ml-4 transition-colors ${
+                      theme === 'dark' ? 'text-[#d4d4d4]' : 'text-[#4a3f2f]'
+                    }`} {...props} />
+                  ),
                   blockquote: ({node, ...props}: any) => (
-                    <blockquote className="border-l-4 border-[#c9983a]/50 pl-4 italic my-4" {...props} />
+                    <blockquote className={`border-l-4 pl-4 italic my-4 transition-colors ${
+                      theme === 'dark'
+                        ? 'border-[#c9983a]/60 text-[#d4d4d4] bg-white/[0.05]'
+                        : 'border-[#c9983a]/70 text-[#4a3f2f] bg-white/[0.10]'
+                    }`} {...props} />
                   ),
                   img: ({node, ...props}: any) => (
                     <img className="rounded-[12px] max-w-full h-auto my-4" {...props} />
+                  ),
+                  strong: ({node, ...props}: any) => (
+                    <strong className={`font-bold transition-colors ${
+                      theme === 'dark' ? 'text-[#f5f5f5]' : 'text-[#2d2820]'
+                    }`} {...props} />
                   ),
                 }}
               >

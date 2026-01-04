@@ -159,6 +159,7 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// Public projects list with filtering
 	projectsPublic := handlers.NewProjectsPublicHandler(deps.DB)
 	app.Get("/projects", projectsPublic.List())
+	app.Get("/projects/recommended", projectsPublic.Recommended())
 	app.Get("/projects/filters", projectsPublic.FilterOptions())
 
 	projects := handlers.NewProjectsHandler(cfg, deps.DB)

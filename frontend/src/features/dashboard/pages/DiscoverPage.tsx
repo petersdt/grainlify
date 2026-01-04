@@ -2,104 +2,201 @@ import { useTheme } from '../../../shared/contexts/ThemeContext';
 import { Heart, Star, GitFork, ArrowUpRight, Target, Zap } from 'lucide-react';
 import { LanguageIcon } from '../../../shared/components/LanguageIcon';
 import { IssueCard } from '../../../shared/components/ui/IssueCard';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { IssueDetailPage } from './IssueDetailPage';
 import { ProjectDetailPage } from './ProjectDetailPage';
+import { getRecommendedProjects, getPublicProjectIssues } from '../../../shared/api/client';
+
+// Helper function to format numbers (e.g., 1234 -> "1.2K", 1234567 -> "1.2M")
+const formatNumber = (num: number): string => {
+  if (num >= 1000000) {
+    return `${(num / 1000000).toFixed(1)}M`;
+  }
+  if (num >= 1000) {
+    return `${(num / 1000).toFixed(1)}K`;
+  }
+  return num.toString();
+};
+
+// Helper function to get project icon/avatar
+const getProjectIcon = (githubFullName: string): string => {
+  const [owner] = githubFullName.split('/');
+  return `https://github.com/${owner}.png?size=40`;
+};
+
+// Helper function to get gradient color based on project name
+const getProjectColor = (name: string): string => {
+  const colors = [
+    'from-blue-500 to-cyan-500',
+    'from-purple-500 to-pink-500',
+    'from-green-500 to-emerald-500',
+    'from-red-500 to-pink-500',
+    'from-orange-500 to-red-500',
+    'from-gray-600 to-gray-800',
+    'from-green-600 to-green-800',
+    'from-cyan-500 to-blue-600',
+  ];
+  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return colors[hash % colors.length];
+};
+
+// Helper function to calculate days left (mock for now, can be enhanced with actual dates)
+const getDaysLeft = (): string => {
+  const days = Math.floor(Math.random() * 10) + 1;
+  return `${days} days left`;
+};
+
+// Helper function to get primary tag from issue labels
+const getPrimaryTag = (labels: any[]): string | undefined => {
+  if (!Array.isArray(labels) || labels.length === 0) return undefined;
+  
+  // Check for common tags
+  const tagMap: Record<string, string> = {
+    'good first issue': 'good first issue',
+    'good-first-issue': 'good first issue',
+    'bug': 'bug',
+    'enhancement': 'enhancement',
+    'feature': 'feature',
+    'performance': 'performance',
+    'a11y': 'a11y',
+    'accessibility': 'a11y',
+  };
+  
+  for (const label of labels) {
+    const labelName = typeof label === 'string' ? label.toLowerCase() : (label?.name || '').toLowerCase();
+    if (tagMap[labelName]) {
+      return tagMap[labelName];
+    }
+  }
+  
+  return undefined;
+};
 
 export function DiscoverPage() {
   const { theme } = useTheme();
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const projects = [
-    {
-      id: 1,
-      name: 'React Ecosystem',
-      icon: '⚛️',
-      stars: '4.9M',
-      forks: '2.6M',
-      issues: 650,
-      description: 'A modern React ecosystem for building user interfaces with enhanced UI/UX modules.',
-      tags: ['TypeScript', 'good first issue'],
-      color: 'from-blue-500 to-cyan-500',
-    },
-    {
-      id: 2,
-      name: 'Nextjs Framework',
-      icon: '▲',
-      stars: '120K',
-      forks: '24K',
-      issues: 480,
-      description: 'The React framework for production with server-side rendering.',
-      tags: ['Frontend'],
-      color: 'from-purple-500 to-pink-500',
-    },
-    {
-      id: 3,
-      name: 'Vue.js',
-      icon: 'V',
-      stars: '214K',
-      forks: '36K',
-      issues: 552,
-      description: 'Progressive JavaScript framework for building user interfaces.',
-      tags: ['Framework'],
-      color: 'from-green-500 to-emerald-500',
-    },
-    {
-      id: 4,
-      name: 'TypeScript',
-      icon: 'TS',
-      stars: '95K',
-      forks: '12K',
-      issues: 325,
-      description: 'TypeScript is a superset of JavaScript that adds static types.',
-      tags: ['TypeScript', 'Language'],
-      color: 'from-blue-600 to-blue-700',
-    },
-    {
-      id: 5,
-      name: 'Tailwind CSS',
-      icon: '🎨',
-      stars: '78K',
-      forks: '4K',
-      issues: 142,
-      description: 'A utility-first CSS framework for rapid UI development.',
-      tags: ['CSS', 'Design'],
-      color: 'from-teal-500 to-cyan-600',
-    },
-    {
-      id: 6,
-      name: 'Node.js',
-      icon: '🟢',
-      stars: '102K',
-      forks: '28K',
-      issues: 875,
-      description: 'JavaScript runtime built on Chrome\'s V8 JavaScript engine.',
-      tags: ['Backend', 'JavaScript'],
-      color: 'from-green-600 to-green-700',
-    },
-    {
-      id: 7,
-      name: 'Webpack',
-      icon: '📦',
-      stars: '64K',
-      forks: '8.7K',
-      issues: 456,
-      description: 'A static module bundler for modern JavaScript applications.',
-      tags: ['Build Tool'],
-      color: 'from-indigo-500 to-blue-600',
-    },
-    {
-      id: 8,
-      name: 'GraphQL',
-      icon: '◆',
-      stars: '14K',
-      forks: '1.3K',
-      issues: 98,
-      description: 'A query language for APIs and a runtime for fulfilling queries.',
-      tags: ['API', 'Backend'],
-      color: 'from-pink-500 to-rose-500',
-    },
-  ];
+  const [projects, setProjects] = useState<Array<{
+    id: string;
+    name: string;
+    icon: string;
+    stars: string;
+    forks: string;
+    issues: number;
+    description: string;
+    tags: string[];
+    color: string;
+  }>>([]);
+  const [recommendedIssues, setRecommendedIssues] = useState<Array<{
+    id: string;
+    title: string;
+    description: string;
+    language: string;
+    daysLeft: string;
+    primaryTag?: string;
+    projectId: string;
+  }>>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [isLoadingIssues, setIsLoadingIssues] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch recommended projects
+  useEffect(() => {
+    const loadRecommendedProjects = async () => {
+      setIsLoadingProjects(true);
+      setError(null);
+      try {
+        const response = await getRecommendedProjects(8);
+        if (!response || !response.projects || !Array.isArray(response.projects)) {
+          throw new Error('Invalid response format from server');
+        }
+        
+        const mappedProjects = response.projects.map((p) => {
+          const repoName = p.github_full_name.split('/')[1] || p.github_full_name;
+          return {
+            id: p.id,
+            name: repoName,
+            icon: getProjectIcon(p.github_full_name),
+            stars: formatNumber(p.stars_count || 0),
+            forks: formatNumber(p.forks_count || 0),
+            issues: p.open_issues_count || 0,
+            description: p.description || `${p.language || 'Project'} repository${p.category ? ` - ${p.category}` : ''}`,
+            tags: Array.isArray(p.tags) ? p.tags.slice(0, 2) : [],
+            color: getProjectColor(repoName),
+          };
+        });
+        
+        setProjects(mappedProjects);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load recommended projects';
+        setError(errorMessage);
+        setProjects([]);
+      } finally {
+        setIsLoadingProjects(false);
+      }
+    };
+
+    loadRecommendedProjects();
+  }, []);
+
+  // Fetch recommended issues from top projects
+  useEffect(() => {
+    const loadRecommendedIssues = async () => {
+      if (projects.length === 0) return;
+      
+      setIsLoadingIssues(true);
+      const issues: Array<{
+        id: string;
+        title: string;
+        description: string;
+        language: string;
+        daysLeft: string;
+        primaryTag?: string;
+        projectId: string;
+      }> = [];
+      
+      // Try to get issues from projects, moving to next if a project has no issues
+      for (const project of projects) {
+        if (issues.length >= 6) break; // We only need 6 issues
+        
+        try {
+          const issuesResponse = await getPublicProjectIssues(project.id);
+          if (issuesResponse?.issues && Array.isArray(issuesResponse.issues) && issuesResponse.issues.length > 0) {
+            // Take up to 2 issues from this project
+            const projectIssues = issuesResponse.issues.slice(0, 2);
+            for (const issue of projectIssues) {
+              if (issues.length >= 6) break;
+              
+              // Get project language for the issue
+              const projectData = projects.find(p => p.id === project.id);
+              const language = projectData?.tags.find(t => ['TypeScript', 'JavaScript', 'Python', 'Rust', 'Go', 'CSS', 'HTML'].includes(t)) || projectData?.tags[0] || 'TypeScript';
+              
+              issues.push({
+                id: String(issue.github_issue_id),
+                title: issue.title || 'Untitled Issue',
+                description: issue.description || '',
+                language: language,
+                daysLeft: getDaysLeft(),
+                primaryTag: getPrimaryTag(issue.labels || []),
+                projectId: project.id,
+              });
+            }
+          }
+        } catch (err) {
+          // If fetching issues fails, continue to next project
+          console.warn(`Failed to fetch issues for project ${project.id}:`, err);
+          continue;
+        }
+      }
+      
+      setRecommendedIssues(issues);
+      setIsLoadingIssues(false);
+    };
+
+    if (!isLoadingProjects && projects.length > 0) {
+      loadRecommendedIssues();
+    }
+  }, [projects, isLoadingProjects]);
 
   // If an issue is selected, show the detail page instead
   if (selectedIssueId) {
@@ -196,8 +293,35 @@ export function DiscoverPage() {
           Finding best suited your interests and expertise
         </p>
 
-        <div className="flex gap-6 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {projects.map((project) => (
+        {error && (
+          <div className={`p-4 rounded-[16px] border mb-6 ${
+            theme === 'dark'
+              ? 'bg-red-500/10 border-red-500/30 text-red-400'
+              : 'bg-red-500/10 border-red-500/30 text-red-600'
+          }`}>
+            <p className="text-[14px] font-semibold">Error: {error}</p>
+          </div>
+        )}
+
+        {isLoadingProjects ? (
+          <div className="flex gap-6 overflow-x-auto pb-2">
+            {[...Array(4)].map((_, idx) => (
+              <div key={idx} className={`flex-shrink-0 w-[320px] h-[280px] rounded-[20px] border ${
+                theme === 'dark' ? 'bg-white/[0.08] border-white/15' : 'bg-white/[0.15] border-white/25'
+              }`} />
+            ))}
+          </div>
+        ) : projects.length === 0 ? (
+          <div className={`p-8 rounded-[16px] border text-center ${
+            theme === 'dark'
+              ? 'bg-white/[0.08] border-white/15 text-[#d4d4d4]'
+              : 'bg-white/[0.15] border-white/25 text-[#7a6b5a]'
+          }`}>
+            <p className="text-[16px] font-semibold">No recommended projects found</p>
+          </div>
+        ) : (
+          <div className="flex gap-6 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            {projects.map((project) => (
             <div
               key={project.id}
               onClick={() => setSelectedProjectId(String(project.id))}
@@ -208,9 +332,20 @@ export function DiscoverPage() {
               }`}
             >
               <div className="flex items-start justify-between mb-4">
-                <div className={`w-12 h-12 rounded-[14px] bg-gradient-to-br ${project.color} flex items-center justify-center shadow-md text-2xl`}>
-                  {project.icon}
-                </div>
+                {project.icon.startsWith('http') ? (
+                  <img
+                    src={project.icon}
+                    alt={project.name}
+                    className="w-12 h-12 rounded-[14px] border border-white/20 flex-shrink-0"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = `https://github.com/github.png?size=40`;
+                    }}
+                  />
+                ) : (
+                  <div className={`w-12 h-12 rounded-[14px] bg-gradient-to-br ${project.color} flex items-center justify-center shadow-md text-2xl`}>
+                    {project.icon}
+                  </div>
+                )}
                 <button className="text-[#c9983a] hover:text-[#a67c2e] transition-colors">
                   <Heart className="w-5 h-5" />
                 </button>
@@ -251,8 +386,9 @@ export function DiscoverPage() {
                 ))}
               </div>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Recommended Issues */}
@@ -270,85 +406,41 @@ export function DiscoverPage() {
           Issues that match your interests and expertise
         </p>
 
-        <div className="flex gap-4 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          <div className="flex-shrink-0 w-[480px]">
-            <IssueCard
-              id="rec-1"
-              title="Add support for new React hooks"
-              description="Implement support for the latest React hooks in the library"
-              language="TypeScript"
-              daysLeft="7 days left"
-              variant="recommended"
-              primaryTag="good first issue"
-              onClick={() => setSelectedIssueId('rec-1')}
-            />
+        {isLoadingIssues ? (
+          <div className="flex gap-4 overflow-x-auto pb-2">
+            {[...Array(3)].map((_, idx) => (
+              <div key={idx} className={`flex-shrink-0 w-[480px] h-[200px] rounded-[16px] border ${
+                theme === 'dark' ? 'bg-white/[0.08] border-white/15' : 'bg-white/[0.15] border-white/25'
+              }`} />
+            ))}
           </div>
-
-          <div className="flex-shrink-0 w-[480px]">
-            <IssueCard
-              id="rec-2"
-              title="Fix memory leak in server components"
-              description="Resolve memory leak issue in SSR implementation"
-              language="JavaScript"
-              daysLeft="3 days left"
-              variant="recommended"
-              primaryTag="bug"
-              onClick={() => setSelectedIssueId('rec-2')}
-            />
+        ) : recommendedIssues.length === 0 ? (
+          <div className={`p-8 rounded-[16px] border text-center ${
+            theme === 'dark'
+              ? 'bg-white/[0.08] border-white/15 text-[#d4d4d4]'
+              : 'bg-white/[0.15] border-white/25 text-[#7a6b5a]'
+          }`}>
+            <p className="text-[16px] font-semibold">No recommended issues found</p>
+            <p className="text-[14px] mt-2">Try checking back later or explore projects manually.</p>
           </div>
-
-          <div className="flex-shrink-0 w-[480px]">
-            <IssueCard
-              id="rec-3"
-              title="Improve TypeScript type definitions"
-              description="Add better type definitions for the core API methods"
-              language="TypeScript"
-              daysLeft="5 days left"
-              variant="recommended"
-              primaryTag="enhancement"
-              onClick={() => setSelectedIssueId('rec-3')}
-            />
+        ) : (
+          <div className="flex gap-4 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            {recommendedIssues.map((issue) => (
+              <div key={issue.id} className="flex-shrink-0 w-[480px]">
+                <IssueCard
+                  id={issue.id}
+                  title={issue.title}
+                  description={issue.description}
+                  language={issue.language}
+                  daysLeft={issue.daysLeft}
+                  variant="recommended"
+                  primaryTag={issue.primaryTag}
+                  onClick={() => setSelectedIssueId(issue.id)}
+                />
+              </div>
+            ))}
           </div>
-
-          <div className="flex-shrink-0 w-[480px]">
-            <IssueCard
-              id="rec-4"
-              title="Add dark mode support"
-              description="Implement dark mode toggle with theme persistence"
-              language="CSS"
-              daysLeft="10 days left"
-              variant="recommended"
-              primaryTag="feature"
-              onClick={() => setSelectedIssueId('rec-4')}
-            />
-          </div>
-
-          <div className="flex-shrink-0 w-[480px]">
-            <IssueCard
-              id="rec-5"
-              title="Optimize bundle size"
-              description="Reduce the main bundle size by implementing code splitting"
-              language="JavaScript"
-              daysLeft="2 days left"
-              variant="recommended"
-              primaryTag="performance"
-              onClick={() => setSelectedIssueId('rec-5')}
-            />
-          </div>
-
-          <div className="flex-shrink-0 w-[480px]">
-            <IssueCard
-              id="rec-6"
-              title="Add accessibility features"
-              description="Improve keyboard navigation and screen reader support"
-              language="TypeScript"
-              daysLeft="8 days left"
-              variant="recommended"
-              primaryTag="a11y"
-              onClick={() => setSelectedIssueId('rec-6')}
-            />
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
