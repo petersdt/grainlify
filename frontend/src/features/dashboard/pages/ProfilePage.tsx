@@ -84,7 +84,10 @@ export function ProfilePage({ viewingUserId, viewingUserLogin, onBack }: Profile
         if (viewingUserId || viewingUserLogin) {
           // Fetch public profile for another user
           data = await getPublicProfile(viewingUserId || undefined, viewingUserLogin || undefined);
-          setViewingUser({ login: data.login, avatar_url: data.avatar_url });
+          setViewingUser({ 
+            login: data.login, 
+            avatar_url: data.avatar_url || `https://github.com/${data.login}.png?size=200`
+          });
         } else {
           // Fetch own profile
           data = await getUserProfile();
@@ -294,11 +297,19 @@ export function ProfilePage({ viewingUserId, viewingUserLogin, onBack }: Profile
                 <>
                   <div className="absolute inset-0 bg-gradient-to-br from-[#c9983a]/40 to-[#d4af37]/25 rounded-full blur-2xl group-hover/avatar:blur-3xl transition-all duration-700 animate-pulse" />
                   <div className="absolute inset-0 bg-gradient-to-br from-[#ffd700]/20 to-[#c9983a]/10 rounded-full blur-xl" />
-                  {(viewingUser?.avatar_url || user?.github.avatar_url) ? (
+                  {(viewingUser?.avatar_url || user?.github?.avatar_url) ? (
                     <img 
-                      src={viewingUser?.avatar_url || user?.github.avatar_url} 
-                      alt={viewingUser?.login || user?.github.login}
+                      src={viewingUser?.avatar_url || user?.github?.avatar_url} 
+                      alt={viewingUser?.login || user?.github?.login}
                       className="relative w-32 h-32 rounded-full border-[6px] border-white/40 shadow-[0_12px_40px_rgba(0,0,0,0.25),inset_0_2px_8px_rgba(255,255,255,0.3)] flex-shrink-0 group-hover/avatar:scale-105 transition-transform duration-500 object-cover"
+                      onError={(e) => {
+                        // Fallback to GitHub avatar if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        const login = viewingUser?.login || user?.github?.login;
+                        if (login) {
+                          target.src = `https://github.com/${login}.png?size=200`;
+                        }
+                      }}
                     />
                   ) : (
                     <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 border-[6px] border-white/40 shadow-[0_12px_40px_rgba(0,0,0,0.25),inset_0_2px_8px_rgba(255,255,255,0.3)] flex-shrink-0 group-hover/avatar:scale-105 transition-transform duration-500" />

@@ -125,7 +125,7 @@ LIMIT $1 OFFSET $2
 		defer rows.Close()
 
 		var leaderboard []fiber.Map
-		rank := 1
+		rank := offset + 1 // Start rank from offset + 1 for pagination
 		for rows.Next() {
 			var username string
 			var avatarURL *string

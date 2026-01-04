@@ -179,6 +179,11 @@ export const getPublicProfile = (userId?: string, login?: string) => {
     ecosystems: Array<{ ecosystem_name: string; contribution_count: number }>;
     bio?: string;
     website?: string;
+    telegram?: string;
+    linkedin?: string;
+    whatsapp?: string;
+    twitter?: string;
+    discord?: string;
     rank: {
       position: number | null;
       tier: string;
