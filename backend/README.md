@@ -6,7 +6,7 @@ This document explains **Patchwork** at a **very low level**, covering:
 - Backend architecture
 - Async systems
 - Chat system
-- Smart contracts (Casper + Cronos)
+- Smart contracts (Stellar / Soroban)
 - Data flow
 - Security & trust model
 
@@ -44,7 +44,7 @@ flowchart TB
     REDIS[(Redis)]
     GH[GitHub API / Webhooks]
     IPFS[(IPFS)]
-    CHAIN["Blockchain<br>Casper / Cronos"]
+    CHAIN["Blockchain<br>Stellar (Soroban)"]
 
     FE --> API
     GH --> API
@@ -64,7 +64,7 @@ flowchart TB
 - Next.js (App Router)
 - TypeScript
 - Tailwind CSS
-- Wallet SDKs (EVM + Casper)
+- Wallet SDKs (Stellar)
 - WebSockets (chat)
 - REST + SSE
 
@@ -254,7 +254,7 @@ Smart contracts are:
 
 All logic stays off-chain.
 
-### 7.2 Casper Smart Contracts
+### 7.2 Stellar (Soroban) Smart Contracts
 
 Escrow Contract
 
@@ -271,18 +271,17 @@ Data:
 - contributor_address
 - amount
 
-### 7.3 Cronos (x402)
+### 7.3 Stellar Transaction Execution
 
 Used for:
 
-- conditional payments
-- agent-driven execution
+- escrow releases
 - automated settlement
 
 Flow:
 
 - backend emits payout intent
-- x402 agent executes
+- Soroban transaction executes
 - tx confirmation sent back
 
 ## 8. Verification System
