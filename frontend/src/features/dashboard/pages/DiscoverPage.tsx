@@ -174,21 +174,21 @@ export function DiscoverPage({ onGoToBilling, onGoToOpenSourceWeek }: DiscoverPa
       await fetchProjects(async () => {
         const response = await getRecommendedProjects(8);
         console.log('DiscoverPage: Recommended projects response', response);
-        
+
         // Handle response - check if it exists and has projects array
         if (!response) {
           console.warn('DiscoverPage: No response received');
           return [];
         }
-        
+
         // Handle both { projects: [...] } and direct array response
         const projectsArray = response.projects || (Array.isArray(response) ? response : []);
-        
+
         if (!Array.isArray(projectsArray)) {
           console.error('DiscoverPage: Invalid response format - projects is not an array', response);
           return [];
         }
-        
+
         const mappedProjects = projectsArray.map((p) => {
           const repoName = p.github_full_name.split('/')[1] || p.github_full_name;
           return {
@@ -203,7 +203,7 @@ export function DiscoverPage({ onGoToBilling, onGoToOpenSourceWeek }: DiscoverPa
             color: getProjectColor(repoName),
           };
         });
-        
+
         console.log('DiscoverPage: Mapped projects', mappedProjects);
         return mappedProjects;
       });
@@ -217,14 +217,14 @@ export function DiscoverPage({ onGoToBilling, onGoToOpenSourceWeek }: DiscoverPa
     const loadRecommendedIssues = async () => {
       // Only fetch issues if we have projects and they're loaded
       if (isLoadingProjects || projects.length === 0) return;
-      
+
       await fetchIssues(async () => {
         const issues: IssueType[] = [];
-        
+
         // Try to get issues from projects, moving to next if a project has no issues
         for (const project of projects) {
           if (issues.length >= 6) break; // We only need 6 issues
-          
+
           try {
             const issuesResponse = await getPublicProjectIssues(project.id);
             if (issuesResponse?.issues && Array.isArray(issuesResponse.issues) && issuesResponse.issues.length > 0) {
@@ -232,11 +232,11 @@ export function DiscoverPage({ onGoToBilling, onGoToOpenSourceWeek }: DiscoverPa
               const projectIssues = issuesResponse.issues.slice(0, 2);
               for (const issue of projectIssues) {
                 if (issues.length >= 6) break;
-                
+
                 // Get project language for the issue
                 const projectData = projects.find(p => p.id === project.id);
                 const language = projectData?.tags.find(t => ['TypeScript', 'JavaScript', 'Python', 'Rust', 'Go', 'CSS', 'HTML'].includes(t)) || projectData?.tags[0] || 'TypeScript';
-                
+
                 issues.push({
                   id: String(issue.github_issue_id),
                   title: issue.title || 'Untitled Issue',
@@ -254,7 +254,7 @@ export function DiscoverPage({ onGoToBilling, onGoToOpenSourceWeek }: DiscoverPa
             continue;
           }
         }
-        
+
         return issues;
       });
     };

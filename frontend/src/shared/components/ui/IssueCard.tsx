@@ -61,7 +61,7 @@ export function IssueCard({
         }`}
       >
         <div className="flex items-start justify-between mb-3">
-          <h4 className={`text-[16px] font-semibold transition-colors ${
+          <h4 className={`text-[16px] font-semibold leading-6 min-h-[3.5rem] line-clamp-2 transition-colors ${
             isDark ? 'text-[#f5f5f5]' : 'text-[#2d2820]'
           }`}>{title}</h4>
           {primaryTag && (
