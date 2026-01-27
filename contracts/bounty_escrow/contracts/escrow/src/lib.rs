@@ -97,7 +97,7 @@ use events::{
 };
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, vec, Address, Env,
-    String, Symbol, Vec,
+    Vec,
 };
 
 // ==================== MONITORING MODULE ====================
@@ -1093,16 +1093,12 @@ impl BountyEscrowContract {
             );
         }
 
+        // Update escrow state - mark as released and set remaining_amount to 0
         escrow.status = EscrowStatus::Released;
+        escrow.remaining_amount = 0;
         env.storage()
             .persistent()
             .set(&DataKey::Escrow(bounty_id), &escrow);
-        // Transfer funds to contributor
-        client.transfer(
-            &env.current_contract_address(),
-            &contributor,
-            &escrow.amount,
-        );
 
         // Emit release event
         emit_funds_released(
@@ -1141,7 +1137,7 @@ impl BountyEscrowContract {
 
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-
+        
         if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
             return Err(Error::BountyNotFound);
         }
@@ -1223,8 +1219,8 @@ impl BountyEscrowContract {
                 refund_amount = escrow.remaining_amount;
                 refund_recipient = escrow.depositor.clone();
                 if is_before_deadline {
-                    return Err(Error::DeadlineNotPassed);
-                }
+            return Err(Error::DeadlineNotPassed);
+        }
             }
             RefundMode::Partial => {
                 refund_amount = amount.unwrap_or(escrow.remaining_amount);
@@ -1304,7 +1300,7 @@ impl BountyEscrowContract {
 
         // Update status
         if escrow.remaining_amount == 0 {
-            escrow.status = EscrowStatus::Refunded;
+        escrow.status = EscrowStatus::Refunded;
         } else {
             escrow.status = EscrowStatus::PartiallyRefunded;
         }
@@ -1363,7 +1359,7 @@ impl BountyEscrowContract {
     /// println!("Deadline: {}", escrow_info.deadline);
     /// ```
     pub fn get_escrow_info(env: Env, bounty_id: u64) -> Result<Escrow, Error> {
-        if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+         if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
             return Err(Error::BountyNotFound);
         }
         Ok(env
@@ -1396,7 +1392,7 @@ impl BountyEscrowContract {
     /// println!("Total locked: {} stroops", balance);
     /// ```
     pub fn get_balance(env: Env) -> Result<i128, Error> {
-        if !env.storage().instance().has(&DataKey::Token) {
+         if !env.storage().instance().has(&DataKey::Token) {
             return Err(Error::NotInitialized);
         }
         let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
@@ -1504,10 +1500,10 @@ impl BountyEscrowContract {
         // Validate batch size
         let batch_size = items.len() as u32;
         if batch_size == 0 {
-            return Err(Error::InvalidAmount);
+            return Err(Error::InvalidBatchSize);
         }
         if batch_size > MAX_BATCH_SIZE {
-            return Err(Error::InvalidAmount);
+            return Err(Error::InvalidBatchSize);
         }
 
         if !env.storage().instance().has(&DataKey::Admin) {
@@ -1633,10 +1629,10 @@ impl BountyEscrowContract {
         // Validate batch size
         let batch_size = items.len() as u32;
         if batch_size == 0 {
-            return Err(Error::InvalidAmount);
+            return Err(Error::InvalidBatchSize);
         }
         if batch_size > MAX_BATCH_SIZE {
-            return Err(Error::InvalidAmount);
+            return Err(Error::InvalidBatchSize);
         }
 
         if !env.storage().instance().has(&DataKey::Admin) {
