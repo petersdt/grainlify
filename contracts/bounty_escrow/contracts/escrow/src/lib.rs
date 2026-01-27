@@ -1013,6 +1013,14 @@ impl BountyEscrowContract {
     ) -> Result<(), Error> {
         let start = env.ledger().timestamp();
 
+        // Reentrancy guard – protect the whole refund flow including external token calls.
+        if env.storage().instance().has(&DataKey::ReentrancyGuard) {
+            panic!("Reentrancy detected");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::ReentrancyGuard, &true);
+
         if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
             let caller = env.current_contract_address();
             monitoring::track_operation(&env, symbol_short!("refund"), caller, false);
@@ -1030,6 +1038,7 @@ impl BountyEscrowContract {
 
         if escrow.status != EscrowStatus::Locked && escrow.status != EscrowStatus::PartiallyRefunded
         {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::FundsNotLocked);
         }
 
@@ -1046,6 +1055,7 @@ impl BountyEscrowContract {
                 refund_amount = escrow.remaining_amount;
                 refund_recipient = escrow.depositor.clone();
                 if is_before_deadline {
+                    env.storage().instance().remove(&DataKey::ReentrancyGuard);
                     return Err(Error::DeadlineNotPassed);
                 }
             }
@@ -1053,12 +1063,25 @@ impl BountyEscrowContract {
                 refund_amount = amount.unwrap_or(escrow.remaining_amount);
                 refund_recipient = escrow.depositor.clone();
                 if is_before_deadline {
+                    env.storage().instance().remove(&DataKey::ReentrancyGuard);
                     return Err(Error::DeadlineNotPassed);
                 }
             }
             RefundMode::Custom => {
-                refund_amount = amount.ok_or(Error::InvalidAmount)?;
-                refund_recipient = recipient.ok_or(Error::InvalidAmount)?;
+                refund_amount = match amount {
+                    Some(a) => a,
+                    None => {
+                        env.storage().instance().remove(&DataKey::ReentrancyGuard);
+                        return Err(Error::InvalidAmount);
+                    }
+                };
+                refund_recipient = match recipient {
+                    Some(r) => r,
+                    None => {
+                        env.storage().instance().remove(&DataKey::ReentrancyGuard);
+                        return Err(Error::InvalidAmount);
+                    }
+                };
 
                 // Custom refunds before deadline require admin approval
                 if is_before_deadline {
@@ -1067,6 +1090,7 @@ impl BountyEscrowContract {
                         .persistent()
                         .has(&DataKey::RefundApproval(bounty_id))
                     {
+                        env.storage().instance().remove(&DataKey::ReentrancyGuard);
                         return Err(Error::RefundNotApproved);
                     }
                     let approval: RefundApproval = env
@@ -1080,6 +1104,7 @@ impl BountyEscrowContract {
                         || approval.recipient != refund_recipient
                         || approval.mode != mode
                     {
+                        env.storage().instance().remove(&DataKey::ReentrancyGuard);
                         return Err(Error::RefundNotApproved);
                     }
 
@@ -1093,6 +1118,7 @@ impl BountyEscrowContract {
 
         // Validate amount
         if refund_amount <= 0 || refund_amount > escrow.remaining_amount {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::InvalidAmount);
         }
 
@@ -1103,6 +1129,7 @@ impl BountyEscrowContract {
         // Check contract balance
         let contract_balance = client.balance(&env.current_contract_address());
         if contract_balance < refund_amount {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::InsufficientFunds);
         }
 
@@ -1324,16 +1351,27 @@ impl BountyEscrowContract {
     /// # Note
     /// This operation is atomic - if any item fails, the entire transaction reverts.
     pub fn batch_lock_funds(env: Env, items: Vec<LockFundsItem>) -> Result<u32, Error> {
+        // Reentrancy guard for batch operation.
+        if env.storage().instance().has(&DataKey::ReentrancyGuard) {
+            panic!("Reentrancy detected");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::ReentrancyGuard, &true);
+
         // Validate batch size
         let batch_size = items.len() as u32;
         if batch_size == 0 {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::InvalidAmount);
         }
         if batch_size > MAX_BATCH_SIZE {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::InvalidAmount);
         }
 
         if !env.storage().instance().has(&DataKey::Admin) {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::NotInitialized);
         }
 
@@ -1350,11 +1388,13 @@ impl BountyEscrowContract {
                 .persistent()
                 .has(&DataKey::Escrow(item.bounty_id))
             {
+                env.storage().instance().remove(&DataKey::ReentrancyGuard);
                 return Err(Error::BountyExists);
             }
 
             // Validate amount
             if item.amount <= 0 {
+                env.storage().instance().remove(&DataKey::ReentrancyGuard);
                 return Err(Error::InvalidAmount);
             }
 
@@ -1366,6 +1406,7 @@ impl BountyEscrowContract {
                 }
             }
             if count > 1 {
+                env.storage().instance().remove(&DataKey::ReentrancyGuard);
                 return Err(Error::DuplicateBountyId);
             }
         }
@@ -1432,6 +1473,7 @@ impl BountyEscrowContract {
             },
         );
 
+        env.storage().instance().remove(&DataKey::ReentrancyGuard);
         Ok(locked_count)
     }
 
@@ -1453,16 +1495,27 @@ impl BountyEscrowContract {
     /// # Note
     /// This operation is atomic - if any item fails, the entire transaction reverts.
     pub fn batch_release_funds(env: Env, items: Vec<ReleaseFundsItem>) -> Result<u32, Error> {
+        // Reentrancy guard for batch operation.
+        if env.storage().instance().has(&DataKey::ReentrancyGuard) {
+            panic!("Reentrancy detected");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::ReentrancyGuard, &true);
+
         // Validate batch size
         let batch_size = items.len() as u32;
         if batch_size == 0 {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::InvalidAmount);
         }
         if batch_size > MAX_BATCH_SIZE {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::InvalidAmount);
         }
 
         if !env.storage().instance().has(&DataKey::Admin) {
+            env.storage().instance().remove(&DataKey::ReentrancyGuard);
             return Err(Error::NotInitialized);
         }
 
@@ -1483,6 +1536,7 @@ impl BountyEscrowContract {
                 .persistent()
                 .has(&DataKey::Escrow(item.bounty_id))
             {
+                env.storage().instance().remove(&DataKey::ReentrancyGuard);
                 return Err(Error::BountyNotFound);
             }
 
@@ -1494,6 +1548,7 @@ impl BountyEscrowContract {
 
             // Check if funds are locked
             if escrow.status != EscrowStatus::Locked {
+                env.storage().instance().remove(&DataKey::ReentrancyGuard);
                 return Err(Error::FundsNotLocked);
             }
 
@@ -1505,6 +1560,7 @@ impl BountyEscrowContract {
                 }
             }
             if count > 1 {
+                env.storage().instance().remove(&DataKey::ReentrancyGuard);
                 return Err(Error::DuplicateBountyId);
             }
 
@@ -1522,14 +1578,14 @@ impl BountyEscrowContract {
                 .get(&DataKey::Escrow(item.bounty_id))
                 .unwrap();
 
-            // Transfer funds to contributor
-            client.transfer(&contract_address, &item.contributor, &escrow.amount);
-
-            // Update escrow status
+            // Update escrow status before external transfer (checks-effects-interactions).
             escrow.status = EscrowStatus::Released;
             env.storage()
                 .persistent()
                 .set(&DataKey::Escrow(item.bounty_id), &escrow);
+
+            // Transfer funds to contributor
+            client.transfer(&contract_address, &item.contributor, &escrow.amount);
 
             // Emit individual event for each released bounty
             emit_funds_released(
@@ -1555,6 +1611,7 @@ impl BountyEscrowContract {
             },
         );
 
+        env.storage().instance().remove(&DataKey::ReentrancyGuard);
         Ok(released_count)
     }
 }
