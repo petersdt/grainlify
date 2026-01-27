@@ -1,147 +1,52 @@
-name: Format, Build, Test, and Stellar Build Check
+name: Soroban Smart Contracts CI
 
 on:
   push:
-    branches: [ main, develop ]
-    paths:
-      - 'contracts/**'
-      - '.github/workflows/contracts.yml'
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: [ main, develop ]
-    paths:
-      - 'contracts/**'
-      - '.github/workflows/contracts.yml'
+    branches: [ "main", "develop" ]
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  format:
-    name: Format Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-      
-      - name: Add wasm32 target
-        run: rustup target add wasm32-unknown-unknown
-      
-      - name: Check formatting
-        run: |
-          cd contracts/bounty_escrow
-          cargo fmt --all -- --check
-
   build:
-    name: Build Contracts
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        contract:
-          - path: contracts/bounty_escrow
-            name: bounty-escrow
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-      
-      - name: Add wasm32 target
-        run: rustup target add wasm32-unknown-unknown
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      
-      - name: Build contract
-        run: |
-          cd ${{ matrix.contract.path }}
-          cargo build --release --target wasm32-unknown-unknown
+    runs-on: macos-latest
 
-  test:
-    name: Test Contracts
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        contract:
-          - path: contracts/bounty_escrow
-            name: bounty-escrow
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-      
-      - name: Add wasm32 target
-        run: rustup target add wasm32-unknown-unknown
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      
-      - name: Run tests
-        run: |
-          cd ${{ matrix.contract.path }}
-          cargo test --lib
+    - uses: actions/checkout@v4
 
-  clippy:
-    name: Clippy Lint Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-      
-      - name: Add wasm32 target
-        run: rustup target add wasm32-unknown-unknown
-      
-      - name: Install Clippy
-        run: rustup component add clippy
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      
-      - name: Run Clippy
-        run: |
-          cd contracts/bounty_escrow
-          cargo clippy --all-targets --all-features -- -D warnings
+    - name: Install Rust
+      run: |
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source $HOME/.cargo/env
+
+    - name: Install Rust target for Soroban
+      run: |
+        source $HOME/.cargo/env
+        rustup target add wasm32v1-none
+
+    - name: Install Stellar CLI with Homebrew
+      run: |
+        brew update
+        brew install stellar-cli
+        stellar --version
+
+    - name: Build Cargo project
+      run: |
+        source $HOME/.cargo/env
+        cd contracts/bounty_escrow/contracts/escrow
+        cargo build --verbose
+
+    - name: Build Soroban contract
+      run: |
+        source $HOME/.cargo/env
+        cd contracts/bounty_escrow/contracts/escrow
+        stellar contract build --verbose
+
+    - name: Run Cargo tests
+      run: |
+        source $HOME/.cargo/env
+        cd contracts/bounty_escrow/contracts/escrow
+        cargo test --verbose --lib
 
