@@ -1326,3 +1326,65 @@ fn test_anti_abuse_whitelist_bypass() {
     let info = contract.get_program_info(&env);
     assert_eq!(info.payout_history.len() as u32, max_ops + 5);
 }
+
+// =============================================================================
+// TESTS FOR batch_initialize_programs
+// =============================================================================
+
+#[test]
+fn test_batch_initialize_programs_success() {
+    let env = Env::default();
+    let contract = ProgramEscrowContract;
+    let admin = Address::generate(&env);
+    let token = Address::generate(&env);
+    let items = vec![
+        &env,
+        ProgramInitItem {
+            program_id: String::from_str(&env, "prog-1"),
+            authorized_payout_key: admin.clone(),
+            token_address: token.clone(),
+        },
+        ProgramInitItem {
+            program_id: String::from_str(&env, "prog-2"),
+            authorized_payout_key: admin.clone(),
+            token_address: token.clone(),
+        },
+    ];
+    let count = contract.batch_initialize_programs(&env, &items).unwrap();
+    assert_eq!(count, 2);
+    assert!(contract.program_exists(&env, &String::from_str(&env, "prog-1")));
+    assert!(contract.program_exists(&env, &String::from_str(&env, "prog-2")));
+}
+
+#[test]
+fn test_batch_initialize_programs_empty_err() {
+    let env = Env::default();
+    let contract = ProgramEscrowContract;
+    let items: Vec<ProgramInitItem> = vec![&env];
+    let res = contract.batch_initialize_programs(&env, &items);
+    assert_eq!(res, Err(BatchError::InvalidBatchSize));
+}
+
+#[test]
+fn test_batch_initialize_programs_duplicate_id_err() {
+    let env = Env::default();
+    let contract = ProgramEscrowContract;
+    let admin = Address::generate(&env);
+    let token = Address::generate(&env);
+    let pid = String::from_str(&env, "same-id");
+    let items = vec![
+        &env,
+        ProgramInitItem {
+            program_id: pid.clone(),
+            authorized_payout_key: admin.clone(),
+            token_address: token.clone(),
+        },
+        ProgramInitItem {
+            program_id: pid,
+            authorized_payout_key: admin.clone(),
+            token_address: token.clone(),
+        },
+    ];
+    let res = contract.batch_initialize_programs(&env, &items);
+    assert_eq!(res, Err(BatchError::DuplicateProgramId));
+}

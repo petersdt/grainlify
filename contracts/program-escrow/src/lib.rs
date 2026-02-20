@@ -279,8 +279,8 @@ mod error_recovery_tests;
 // integration, use the `try_*` variants of client calls where available.
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, vec, Address, Env, String, Symbol,
-    Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, vec, Address, Env,
+    String, Symbol, Vec,
 };
 
 // Event types
@@ -861,6 +861,28 @@ pub struct ProgramData {
     pub token_address: Address,
 }
 
+/// Input item for batch program registration.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProgramInitItem {
+    pub program_id: String,
+    pub authorized_payout_key: Address,
+    pub token_address: Address,
+}
+
+/// Maximum number of programs per batch (aligned with bounty_escrow).
+pub const MAX_BATCH_SIZE: u32 = 100;
+
+/// Errors for batch program registration.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum BatchError {
+    InvalidBatchSize = 1,
+    ProgramAlreadyExists = 2,
+    DuplicateProgramId = 3,
+}
+
 /// Storage key type for individual programs
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1057,6 +1079,92 @@ impl ProgramEscrowContract {
         monitoring::emit_performance(&env, symbol_short!("init_prg"), duration);
 
         program_data
+    }
+
+    /// Batch-initialize multiple programs in one transaction (all-or-nothing).
+    ///
+    /// # Errors
+    /// * `BatchError::InvalidBatchSize` - empty or len > MAX_BATCH_SIZE
+    /// * `BatchError::DuplicateProgramId` - duplicate program_id in items
+    /// * `BatchError::ProgramAlreadyExists` - a program_id already registered
+    pub fn batch_initialize_programs(
+        env: Env,
+        items: Vec<ProgramInitItem>,
+    ) -> Result<u32, BatchError> {
+        let batch_size = items.len() as u32;
+        if batch_size == 0 || batch_size > MAX_BATCH_SIZE {
+            return Err(BatchError::InvalidBatchSize);
+        }
+        for i in 0..batch_size {
+            for j in (i + 1)..batch_size {
+                if items.get(i).unwrap().program_id == items.get(j).unwrap().program_id {
+                    return Err(BatchError::DuplicateProgramId);
+                }
+            }
+        }
+        for i in 0..batch_size {
+            let program_key = DataKey::Program(items.get(i).unwrap().program_id.clone());
+            if env.storage().instance().has(&program_key) {
+                return Err(BatchError::ProgramAlreadyExists);
+            }
+        }
+
+        let mut registry: Vec<String> = env
+            .storage()
+            .instance()
+            .get(&PROGRAM_REGISTRY)
+            .unwrap_or(vec![&env]);
+
+        for i in 0..batch_size {
+            let item = items.get(i).unwrap();
+            let program_id = item.program_id.clone();
+            let authorized_payout_key = item.authorized_payout_key.clone();
+            let token_address = item.token_address.clone();
+
+            if program_id.is_empty() {
+                return Err(BatchError::InvalidBatchSize);
+            }
+
+            let program_data = ProgramData {
+                program_id: program_id.clone(),
+                total_funds: 0,
+                remaining_balance: 0,
+                authorized_payout_key: authorized_payout_key.clone(),
+                payout_history: vec![&env],
+                token_address: token_address.clone(),
+            };
+            let program_key = DataKey::Program(program_id.clone());
+            env.storage().instance().set(&program_key, &program_data);
+
+            if i == 0 {
+                let fee_config = FeeConfig {
+                    lock_fee_rate: 0,
+                    payout_fee_rate: 0,
+                    fee_recipient: authorized_payout_key.clone(),
+                    fee_enabled: false,
+                };
+                env.storage().instance().set(&FEE_CONFIG, &fee_config);
+            }
+
+            let multisig_config = MultisigConfig {
+                threshold_amount: i128::MAX,
+                signers: vec![&env],
+                required_signatures: 0,
+            };
+            env.storage().persistent().set(
+                &DataKey::MultisigConfig(program_id.clone()),
+                &multisig_config,
+            );
+
+            registry.push_back(program_id.clone());
+            env.events().publish(
+                (PROGRAM_REGISTERED,),
+                (program_id, authorized_payout_key, token_address, 0i128),
+            );
+        }
+        env.storage().instance().set(&PROGRAM_REGISTRY, &registry);
+
+        Ok(batch_size as u32)
     }
 
     /// Calculate fee amount based on rate (in basis points)
@@ -3337,6 +3445,67 @@ mod test {
 
         let prog_id = String::from_str(&env, "DoesNotExist");
         client.get_program_info(&prog_id);
+    }
+
+    // ========================================================================
+    // Batch program registration tests
+    // ========================================================================
+
+    #[test]
+    fn test_batch_initialize_programs_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+        let mut items = Vec::new(&env);
+        items.push_back(ProgramInitItem {
+            program_id: String::from_str(&env, "prog-1"),
+            authorized_payout_key: admin.clone(),
+            token_address: token.clone(),
+        });
+        items.push_back(ProgramInitItem {
+            program_id: String::from_str(&env, "prog-2"),
+            authorized_payout_key: admin.clone(),
+            token_address: token.clone(),
+        });
+        let count = client.try_batch_initialize_programs(&items).unwrap().unwrap();
+        assert_eq!(count, 2);
+        assert!(client.program_exists(&String::from_str(&env, "prog-1")));
+        assert!(client.program_exists(&String::from_str(&env, "prog-2")));
+    }
+
+    #[test]
+    fn test_batch_initialize_programs_empty_err() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+        let items: Vec<ProgramInitItem> = Vec::new(&env);
+        let res = client.try_batch_initialize_programs(&items);
+        assert!(matches!(res, Err(Ok(BatchError::InvalidBatchSize))));
+    }
+
+    #[test]
+    fn test_batch_initialize_programs_duplicate_id_err() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+        let pid = String::from_str(&env, "same-id");
+        let mut items = Vec::new(&env);
+        items.push_back(ProgramInitItem {
+            program_id: pid.clone(),
+            authorized_payout_key: admin.clone(),
+            token_address: token.clone(),
+        });
+        items.push_back(ProgramInitItem {
+            program_id: pid,
+            authorized_payout_key: admin.clone(),
+            token_address: token.clone(),
+        });
+        let res = client.try_batch_initialize_programs(&items);
+        assert!(matches!(res, Err(Ok(BatchError::DuplicateProgramId))));
     }
 
     // ========================================================================
